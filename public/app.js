@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sectionsContainer = document.getElementById('sections-container');
     const sectionsSelect = document.getElementById('sections');
     const intervalInput = document.getElementById('interval');
+    const intervalValue = document.getElementById('interval-value');
     const watchWaitlistInput = document.getElementById('watch-waitlist');
     const strictModeInput = document.getElementById('strict-mode');
 
@@ -28,6 +29,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function showWelcomeMessage() {
         formContainer.classList.add('hidden');
         welcomeMessage.classList.remove('hidden');
+    }
+    
+    function updateFindSectionsButtonState() {
+        findSectionsBtn.disabled = !(subjectInput.value.trim() && courseInput.value.trim());
+    }
+
+    function updateCreateButtonState() {
+        createBtn.disabled = sectionsSelect.selectedOptions.length === 0;
     }
 
     function addSlot(crn, subject, course, interval, watchWaitlist, strictMode) {
@@ -73,9 +82,12 @@ document.addEventListener('DOMContentLoaded', () => {
             subjectInput.value = activeSlot.dataset.subject;
             courseInput.value = activeSlot.dataset.course;
             intervalInput.value = activeSlot.dataset.interval;
+            intervalValue.textContent = `${activeSlot.dataset.interval}s`;
             watchWaitlistInput.checked = activeSlot.dataset.watchWaitlist === 'true';
             strictModeInput.checked = activeSlot.dataset.strictMode === 'true';
             sectionsContainer.classList.add('hidden');
+            updateFindSectionsButtonState();
+            createBtn.disabled = true;
         });
 
         slotsContainer.insertBefore(slot, newSlotButton);
@@ -94,24 +106,30 @@ document.addEventListener('DOMContentLoaded', () => {
         subjectInput.value = '';
         courseInput.value = '';
         intervalInput.value = '30';
+        intervalValue.textContent = '30s';
         watchWaitlistInput.checked = false;
-        strictModeInput.checked = false;
+        strictModeInput.checked = true;
         sectionsContainer.classList.add('hidden');
         sectionsSelect.innerHTML = '';
         showForm();
+        updateFindSectionsButtonState();
+        updateCreateButtonState();
+    });
+
+    subjectInput.addEventListener('input', updateFindSectionsButtonState);
+    courseInput.addEventListener('input', updateFindSectionsButtonState);
+    
+    intervalInput.addEventListener('input', () => {
+        intervalValue.textContent = `${intervalInput.value}s`;
     });
 
     findSectionsBtn.addEventListener('click', async () => {
         const subject = subjectInput.value.trim().toUpperCase();
         const course = courseInput.value.trim();
 
-        if (!subject || !course) {
-            alert('Please enter a subject and course.');
-            return;
-        }
-
         findSectionsBtn.disabled = true;
         findSectionsBtn.textContent = 'Finding...';
+        createBtn.disabled = true;
 
         try {
             const response = await fetch(`/.netlify/functions/check-crn?subject=${subject}&course=${course}`);
@@ -140,6 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             findSectionsBtn.disabled = false;
             findSectionsBtn.textContent = 'Find Sections';
+            updateFindSectionsButtonState();
         }
     });
     
@@ -148,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const option = e.target;
         if (option.tagName === 'OPTION') {
             option.selected = !option.selected;
+            updateCreateButtonState();
         }
     });
 
