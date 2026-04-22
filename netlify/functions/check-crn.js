@@ -3,7 +3,7 @@ const cheerio = require('cheerio');
 
 async function checkClassAvailability(term, crn) {
     const url = `https://oscar.gatech.edu/pls/bprod/bwckschd.p_disp_detail_sched?term_in=${term}&crn_in=${crn}`;
-    const maxRetries = 30;
+    const maxRetries = 100;
     const retryDelay = 5000; // 1 second
 
     for (let i = 0; i < maxRetries; i++) {
