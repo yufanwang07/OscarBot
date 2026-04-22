@@ -70,7 +70,7 @@ function getCurrentTerm() {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
-    return `202602`;
+    return `202608`;
     if (month >= 1 && month <= 5) {
         return `${year}02`;
     } else if (month >= 6 && month <= 7) {
