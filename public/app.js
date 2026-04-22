@@ -230,38 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const waitlistInfoEl = slot.querySelector('.waitlist-info');
         const registerBtn = slot.querySelector('.register-btn');
 
-
-        statusEl.textContent = 'Status: Initializing...';
-        statusEl.classList.remove('text-green-500', 'text-red-500');
-        seatInfoEl.classList.remove('hidden');
-        waitlistInfoEl.classList.remove('hidden');
-        registerBtn.classList.add('hidden');
-
-        try {
-            const response = await fetch(`/.netlify/functions/check-crn?crn=${crn}`);
-            const data = await response.json();
-
-            if (response.ok && data.status === 'initial') {
-                slot.dataset.initialSeatsActual = data.availability.seats.actual;
-                slot.dataset.initialSeatsCapacity = data.availability.seats.capacity;
-                slot.dataset.initialWaitlistActual = data.availability.waitlist.actual;
-                slot.dataset.initialWaitlistCapacity = data.availability.waitlist.capacity;
-                
-                seatInfoEl.textContent = `Seats: ${data.availability.seats.actual}/${data.availability.seats.capacity}`;
-                waitlistInfoEl.textContent = `Waitlist: ${data.availability.waitlist.actual}/${data.availability.waitlist.capacity}`;
-                statusEl.textContent = 'Status: Monitoring...';
-            } else {
-                 throw new Error(data.error || 'Initialization failed');
-            }
-        } catch (error) {
-            statusEl.textContent = 'Status: Error on Init';
-            statusEl.classList.add('text-red-500');
-            console.error('Error initializing CRN check:', error);
-            return;
-        }
-
-
-        monitoringIntervals[slotId] = setInterval(async () => {
+        const performCheck = async () => {
             const queryParams = new URLSearchParams({
                 crn: slot.dataset.crn,
                 initialSeatsActual: slot.dataset.initialSeatsActual,
@@ -280,6 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(data.error || `Request failed with status ${response.status}`);
                 }
 
+                statusEl.classList.remove('text-red-500');
                 seatInfoEl.textContent = `Seats: ${data.availability.seats.actual}/${data.availability.seats.capacity}`;
                 waitlistInfoEl.textContent = `Waitlist: ${data.availability.waitlist.actual}/${data.availability.waitlist.capacity}`;
                 seatInfoEl.classList.remove('hidden');
@@ -319,17 +289,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 else if (data.status === 'closed') {
                     statusEl.textContent = 'Status: Monitoring...';
-                } else {
-                    statusEl.textContent = `Status: ${data.error || 'Unknown Error'}`;
-                    statusEl.classList.add('text-red-500');
-                    clearInterval(monitoringIntervals[slotId]);
                 }
             } catch (error) {
-                statusEl.textContent = 'Status: Error';
+                statusEl.textContent = 'Status: Connection issue. Retrying...';
                 statusEl.classList.add('text-red-500');
-                clearInterval(monitoringIntervals[slotId]);
-                console.error('Error checking CRN:', error);
+                console.error('Error checking CRN:', error.message);
             }
-        }, interval);
+        };
+        
+        statusEl.textContent = 'Status: Initializing...';
+        statusEl.classList.remove('text-green-500', 'text-red-500');
+        seatInfoEl.classList.remove('hidden');
+        waitlistInfoEl.classList.remove('hidden');
+        registerBtn.classList.add('hidden');
+
+        try {
+            const response = await fetch(`/.netlify/functions/check-crn?crn=${crn}`);
+            const data = await response.json();
+
+            if (response.ok && data.status === 'initial') {
+                slot.dataset.initialSeatsActual = data.availability.seats.actual;
+                slot.dataset.initialSeatsCapacity = data.availability.seats.capacity;
+                slot.dataset.initialWaitlistActual = data.availability.waitlist.actual;
+                slot.dataset.initialWaitlistCapacity = data.availability.waitlist.capacity;
+                
+                seatInfoEl.textContent = `Seats: ${data.availability.seats.actual}/${data.availability.seats.capacity}`;
+                waitlistInfoEl.textContent = `Waitlist: ${data.availability.waitlist.actual}/${data.availability.waitlist.capacity}`;
+                statusEl.textContent = 'Status: Monitoring...';
+
+                monitoringIntervals[slotId] = setInterval(performCheck, interval);
+            } else {
+                 throw new Error(data.error || 'Initialization failed');
+            }
+        } catch (error) {
+            statusEl.textContent = 'Status: Error on Init. Retrying...';
+            statusEl.classList.add('text-red-500');
+            console.error('Error initializing CRN check:', error);
+            
+            monitoringIntervals[slotId] = setInterval(performCheck, interval);
+        }
     }
 });
