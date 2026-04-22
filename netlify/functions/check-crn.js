@@ -155,11 +155,20 @@ exports.handler = async (event, context) => {
 
         let status = 'closed';
 
-        if (availability.seats.actual < iSeatsActual) {
-            status = 'open';
-        } else if (!beStrict && watchingWaitlist && (availability.waitlist.actual < iWaitlistActual)) {
+        if (beStrict) {
+            if (availability.seats.actual < iSeatsActual) {
+                status = 'open';
+            }
+        } else {
+            if (availability.seats.remaining > 0) {
+                status = 'open';
+            }
+        }
+
+        if (status !== 'open' && !beStrict && watchingWaitlist && (availability.waitlist.actual < iWaitlistActual)) {
             status = 'waitlist_open';
         }
+
 
         return {
             statusCode: 200,
