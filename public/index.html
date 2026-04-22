@@ -23,9 +23,23 @@
             <div id="form-container" class="hidden">
                 <h2 class="text-2xl font-bold mb-4">Add New Course</h2>
                 <div class="space-y-4">
-                    <div>
-                        <label for="crn" class="block text-sm font-medium text-gray-700">CRN</label>
-                        <input type="text" id="crn" name="crn" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    <div class="flex space-x-4">
+                        <div class="flex-1">
+                            <label for="subject" class="block text-sm font-medium text-gray-700">Subject</label>
+                            <input type="text" id="subject" name="subject" placeholder="e.g., CS" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        </div>
+                        <div class="flex-1">
+                            <label for="course" class="block text-sm font-medium text-gray-700">Course</label>
+                            <input type="text" id="course" name="course" placeholder="e.g., 1331" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        </div>
+                    </div>
+                     <button id="find-sections-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Find Sections
+                    </button>
+                    <div id="sections-container" class="hidden">
+                        <label for="sections" class="block text-sm font-medium text-gray-700">Sections</label>
+                        <select id="sections" name="sections" multiple class="mt-1 block w-full h-40 px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        </select>
                     </div>
                     <div>
                         <label for="interval" class="block text-sm font-medium text-gray-700">Time Between Requests (seconds)</label>
@@ -35,8 +49,12 @@
                         <input id="watch-waitlist" name="watch-waitlist" type="checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
                         <label for="watch-waitlist" class="ml-2 block text-sm text-gray-900">Watch Waitlist</label>
                     </div>
+                    <div class="flex items-center">
+                        <input id="strict-mode" name="strict-mode" type="checkbox" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                        <label for="strict-mode" class="ml-2 block text-sm text-gray-900">Only check for new seats (will not alert for existing openings)</label>
+                    </div>
                     <button id="create-btn" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Create
+                        Start Monitoring
                     </button>
                 </div>
             </div>
