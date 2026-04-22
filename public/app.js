@@ -6,9 +6,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const formContainer = document.getElementById('form-container');
     const welcomeMessage = document.getElementById('welcome-message');
     const createBtn = document.getElementById('create-btn');
-    const crnInput = document.getElementById('crn');
+    const subjectInput = document.getElementById('subject');
+    const courseInput = document.getElementById('course');
+    const findSectionsBtn = document.getElementById('find-sections-btn');
+    const sectionsContainer = document.getElementById('sections-container');
+    const sectionsSelect = document.getElementById('sections');
     const intervalInput = document.getElementById('interval');
     const watchWaitlistInput = document.getElementById('watch-waitlist');
+    const strictModeInput = document.getElementById('strict-mode');
 
     let activeSlot = null;
     let slotCounter = 0;
@@ -25,19 +30,22 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeMessage.classList.remove('hidden');
     }
 
-    function addSlot(crn, interval, watchWaitlist) {
+    function addSlot(crn, subject, course, interval, watchWaitlist, strictMode) {
         const slotId = `slot-${slotCounter++}`;
         const slot = document.createElement('div');
         slot.classList.add('slot', 'p-4', 'rounded-md', 'cursor-pointer', 'border');
         slot.dataset.slotId = slotId;
         slot.dataset.crn = crn;
+        slot.dataset.subject = subject;
+        slot.dataset.course = course;
         slot.dataset.interval = interval;
         slot.dataset.watchWaitlist = watchWaitlist;
+        slot.dataset.strictMode = strictMode;
 
         slot.innerHTML = `
             <div class="flex justify-between items-start">
                 <div class="flex flex-col">
-                    <div class="font-bold">CRN: ${crn}</div>
+                    <div class="font-bold">CRN: ${crn} (${subject} ${course})</div>
                     <div class="text-sm text-gray-600">Interval: ${interval}s</div>
                 </div>
                 <div class="flex flex-col items-end">
@@ -47,6 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
             <div class="text-sm text-gray-600">Waitlist: ${watchWaitlist ? 'Watching' : 'Not Watching'}</div>
+            <div class="text-sm text-gray-600">Strict Mode: ${strictMode ? 'On' : 'Off'}</div>
             <div class="text-sm text-gray-500 status">Status: Idle</div>
         `;
 
@@ -61,9 +70,12 @@ document.addEventListener('DOMContentLoaded', () => {
             activeSlot.dataset.new = "false";
 
             showForm();
-            crnInput.value = activeSlot.dataset.crn;
+            subjectInput.value = activeSlot.dataset.subject;
+            courseInput.value = activeSlot.dataset.course;
             intervalInput.value = activeSlot.dataset.interval;
             watchWaitlistInput.checked = activeSlot.dataset.watchWaitlist === 'true';
+            strictModeInput.checked = activeSlot.dataset.strictMode === 'true';
+            sectionsContainer.classList.add('hidden');
         });
 
         slotsContainer.insertBefore(slot, newSlotButton);
@@ -79,19 +91,76 @@ document.addEventListener('DOMContentLoaded', () => {
             activeSlot.classList.remove('active');
         }
         activeSlot = null;
-        crnInput.value = '';
+        subjectInput.value = '';
+        courseInput.value = '';
         intervalInput.value = '30';
         watchWaitlistInput.checked = false;
+        strictModeInput.checked = false;
+        sectionsContainer.classList.add('hidden');
+        sectionsSelect.innerHTML = '';
         showForm();
     });
 
+    findSectionsBtn.addEventListener('click', async () => {
+        const subject = subjectInput.value.trim().toUpperCase();
+        const course = courseInput.value.trim();
+
+        if (!subject || !course) {
+            alert('Please enter a subject and course.');
+            return;
+        }
+
+        findSectionsBtn.disabled = true;
+        findSectionsBtn.textContent = 'Finding...';
+
+        try {
+            const response = await fetch(`/.netlify/functions/check-crn?subject=${subject}&course=${course}`);
+            const sections = await response.json();
+
+            if (sections.error) {
+                throw new Error(sections.error);
+            }
+            
+            sectionsSelect.innerHTML = '';
+            if (sections.length > 0) {
+                sections.forEach(section => {
+                    const option = document.createElement('option');
+                    option.value = section.crn;
+                    option.textContent = `${section.name}`;
+                    sectionsSelect.appendChild(option);
+                });
+                sectionsContainer.classList.remove('hidden');
+            } else {
+                alert('No sections found for this course.');
+                sectionsContainer.classList.add('hidden');
+            }
+        } catch (error) {
+            alert(`Error finding sections: ${error.message}`);
+            sectionsContainer.classList.add('hidden');
+        } finally {
+            findSectionsBtn.disabled = false;
+            findSectionsBtn.textContent = 'Find Sections';
+        }
+    });
+    
+    sectionsSelect.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        const option = e.target;
+        if (option.tagName === 'OPTION') {
+            option.selected = !option.selected;
+        }
+    });
+
     createBtn.addEventListener('click', () => {
-        const crn = crnInput.value.trim();
+        const subject = subjectInput.value.trim().toUpperCase();
+        const course = courseInput.value.trim();
+        const selectedOptions = Array.from(sectionsSelect.selectedOptions);
         const interval = parseInt(intervalInput.value, 10);
         const watchWaitlist = watchWaitlistInput.checked;
+        const strictMode = strictModeInput.checked;
 
-        if (!crn) {
-            alert('Please enter a CRN.');
+        if (selectedOptions.length === 0) {
+            alert('Please find and select at least one section.');
             return;
         }
 
@@ -99,29 +168,21 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Please enter a valid interval between 5 and 600 seconds.');
             return;
         }
-
-        let targetSlot;
-        if (activeSlot && activeSlot.dataset.crn === crn) {
-            targetSlot = activeSlot;
-            targetSlot.dataset.interval = interval;
-            targetSlot.dataset.watchWaitlist = watchWaitlist;
-            targetSlot.querySelector('.text-sm.text-gray-600').textContent = `Interval: ${interval}s`;
-            targetSlot.querySelectorAll('.text-sm.text-gray-600')[1].textContent = `Waitlist: ${watchWaitlist ? 'Watching' : 'Not Watching'}`;
-        } else {
-            const existingSlot = findSlotByCrn(crn);
-            if (existingSlot) {
-                alert('A slot for this CRN already exists.');
-                return;
-            }
-            targetSlot = addSlot(crn, interval, watchWaitlist);
-            if (activeSlot) {
-                activeSlot.classList.remove('active');
-            }
-            activeSlot = targetSlot;
-            activeSlot.classList.add('active');
-        }
         
-        startMonitoring(targetSlot);
+        selectedOptions.forEach(option => {
+            const crn = option.value;
+            const existingSlot = findSlotByCrn(crn);
+            if (!existingSlot) {
+                const newSlot = addSlot(crn, subject, course, interval, watchWaitlist, strictMode);
+                startMonitoring(newSlot);
+            } else {
+                existingSlot.dataset.interval = interval;
+                existingSlot.dataset.watchWaitlist = watchWaitlist;
+                existingSlot.dataset.strictMode = strictMode;
+                startMonitoring(existingSlot);
+            }
+        });
+        
         showWelcomeMessage();
     });
 
@@ -139,7 +200,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const crn = slot.dataset.crn;
         const interval = parseInt(slot.dataset.interval, 10) * 1000;
         const slotId = slot.dataset.slotId;
-        const watchWaitlist = slot.dataset.watchWaitlist === 'true';
 
         if (monitoringIntervals[slotId]) {
             clearInterval(monitoringIntervals[slotId]);
@@ -155,14 +215,13 @@ document.addEventListener('DOMContentLoaded', () => {
         statusEl.classList.remove('text-green-500', 'text-red-500');
         seatInfoEl.classList.remove('hidden');
         waitlistInfoEl.classList.remove('hidden');
-        registerBtn.classList.add('hidden'); // Ensure register button is hidden initially
+        registerBtn.classList.add('hidden');
 
-        // Initial call to get baseline
         try {
             const response = await fetch(`/.netlify/functions/check-crn?crn=${crn}`);
             const data = await response.json();
 
-            if (data.status === 'initial') {
+            if (response.ok && data.status === 'initial') {
                 slot.dataset.initialSeatsActual = data.availability.seats.actual;
                 slot.dataset.initialSeatsCapacity = data.availability.seats.capacity;
                 slot.dataset.initialWaitlistActual = data.availability.waitlist.actual;
@@ -189,14 +248,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 initialSeatsCapacity: slot.dataset.initialSeatsCapacity,
                 initialWaitlistActual: slot.dataset.initialWaitlistActual,
                 initialWaitlistCapacity: slot.dataset.initialWaitlistCapacity,
-                watchWaitlist: slot.dataset.watchWaitlist
+                watchWaitlist: slot.dataset.watchWaitlist,
+                strictMode: slot.dataset.strictMode
             });
 
             try {
                 const response = await fetch(`/.netlify/functions/check-crn?${queryParams}`);
                 const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || `Request failed with status ${response.status}`);
+                }
 
-                // Always update seat/waitlist info during monitoring
                 seatInfoEl.textContent = `Seats: ${data.availability.seats.actual}/${data.availability.seats.capacity}`;
                 waitlistInfoEl.textContent = `Waitlist: ${data.availability.waitlist.actual}/${data.availability.waitlist.capacity}`;
                 seatInfoEl.classList.remove('hidden');

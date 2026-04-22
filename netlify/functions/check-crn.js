@@ -1,10 +1,48 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
+async function getSections(term, subject, course) {
+    const url = `https://oscar.gatech.edu/bprod/bwckctlg.p_disp_listcrse?term_in=${term}&subj_in=${subject}&crse_in=${course}&schd_in=%`;
+    try {
+        const { data } = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
+        const $ = cheerio.load(data);
+        const sections = [];
+
+        if (data.includes("No courses found")) {
+            return sections;
+        }
+
+        $('th.ddtitle a').each((i, el) => {
+            const linkText = $(el).text();
+            const parts = linkText.split(' - ');
+            if (parts.length >= 4) {
+                const crn = parts[1];
+                const section = parts[3];
+                sections.push({
+                    crn: crn.trim(),
+                    section: section.trim(),
+                    name: linkText.trim()
+                });
+            }
+        });
+
+        return sections;
+    } catch (error) {
+        console.error(`Failed to fetch sections for ${subject} ${course}:`, error.message);
+        throw new Error(`Failed to fetch sections for ${subject} ${course}.`);
+    }
+}
+
+
 async function checkClassAvailability(term, crn) {
-    const url = `https://oscar.gatech.edu/pls/bprod/bwckschd.p_disp_detail_sched?term_in=${term}&crn_in=${crn}`;
+    const url = `https://gt-scheduler.azurewebsites.net/proxy/class_section?term=${term}&crn=${crn}`;
     const maxRetries = 100;
-    const retryDelay = 5000; // 1 second
+    const retryDelay = 5000; // 5 seconds
 
     for (let i = 0; i < maxRetries; i++) {
         try {
@@ -20,38 +58,32 @@ async function checkClassAvailability(term, crn) {
 
             const $ = cheerio.load(data);
 
-            if (data.includes("No detailed class information found")) {
-                throw new Error(`CRN ${crn} not found for term ${term}.`);
-            }
+            const seats = { capacity: 0, actual: 0, remaining: 0 };
+            const waitlist = { capacity: 0, actual: 0, remaining: 0 };
 
-            const seats = {
-                capacity: 0,
-                actual: 0,
-                remaining: 0,
-            };
+            const enrollmentInfo = $('section[aria-labelledby="enrollmentInfo"]');
 
-            const waitlist = {
-                capacity: 0,
-                actual: 0,
-                remaining: 0,
-            };
+            if (enrollmentInfo.length > 0) {
+                const spans = enrollmentInfo.find('span');
 
-            const seatsHeader = $("th.ddlabel:contains('Seats')");
-            if (seatsHeader.length) {
-                const row = seatsHeader.parent();
-                const cells = row.find('td.dddefault');
-                seats.capacity = parseInt($(cells[0]).text(), 10) || 0;
-                seats.actual = parseInt($(cells[1]).text(), 10) || 0;
-                seats.remaining = parseInt($(cells[2]).text(), 10) || 0;
-            }
+                spans.each(function(index) {
+                    const text = $(this).text().trim();
+                    const nextSpan = $(this).next('span[dir="ltr"]');
+                    if (nextSpan.length > 0) {
+                        const value = parseInt(nextSpan.text().trim(), 10);
+                        if (!isNaN(value)) {
+                            if (text.includes('Enrollment Actual:')) seats.actual = value;
+                            else if (text.includes('Enrollment Maximum:')) seats.capacity = value;
+                            else if (text.includes('Enrollment Seats Available:')) seats.remaining = value;
+                            else if (text.includes('Waitlist Capacity:')) waitlist.capacity = value;
+                            else if (text.includes('Waitlist Actual:')) waitlist.actual = value;
+                            else if (text.includes('Waitlist Seats Available:')) waitlist.remaining = value;
+                        }
+                    }
+                });
 
-            const waitlistHeader = $("th.ddlabel:contains('Waitlist Seats')");
-            if (waitlistHeader.length) {
-                const row = waitlistHeader.parent();
-                const cells = row.find('td.dddefault');
-                waitlist.capacity = parseInt($(cells[0]).text(), 10) || 0;
-                waitlist.actual = parseInt($(cells[1]).text(), 10) || 0;
-                waitlist.remaining = parseInt($(cells[2]).text(), 10) || 0;
+            } else {
+                 throw new Error(`CRN ${crn} not found for term ${term}.`);
             }
 
             return { seats, waitlist };
@@ -67,42 +99,48 @@ async function checkClassAvailability(term, crn) {
 }
 
 function getCurrentTerm() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
     return `202608`;
-    if (month >= 1 && month <= 5) {
-        return `${year}02`;
-    } else if (month >= 6 && month <= 7) {
-        return `${year}05`;
-    } else {
-        return `${year}08`;
-    }
 }
 
 exports.handler = async (event, context) => {
     const {
         crn,
+        subject,
+        course,
         initialSeatsActual,
         initialSeatsCapacity,
         initialWaitlistActual,
         initialWaitlistCapacity,
-        watchWaitlist
+        watchWaitlist,
+        strictMode
     } = event.queryStringParameters;
     const term = getCurrentTerm();
+
+    if (subject && course) {
+        try {
+            const sections = await getSections(term, subject, course);
+            return {
+                statusCode: 200,
+                body: JSON.stringify(sections),
+            };
+        } catch (error) {
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ error: error.message }),
+            };
+        }
+    }
 
     if (!crn) {
         return {
             statusCode: 400,
-            body: JSON.stringify({ error: 'CRN query parameter is required.' }),
+            body: JSON.stringify({ error: 'CRN or Subject/Course query parameters are required.' }),
         };
     }
 
     try {
         const availability = await checkClassAvailability(term, crn);
 
-        // If initial values aren't provided, this is the first run for this CRN.
-        // Return current availability so the client can store it.
         if (!initialSeatsActual) {
             return {
                 statusCode: 200,
@@ -111,20 +149,16 @@ exports.handler = async (event, context) => {
         }
 
         const iSeatsActual = parseInt(initialSeatsActual, 10);
-        const iSeatsCapacity = parseInt(initialSeatsCapacity, 10);
+        const iWaitlistActual = parseInt(initialWaitlistActual, 10);
         const watchingWaitlist = watchWaitlist === 'true';
+        const beStrict = strictMode === 'true';
 
         let status = 'closed';
 
-        if (availability.seats.actual < iSeatsActual || availability.seats.capacity > iSeatsCapacity) {
+        if (availability.seats.actual < iSeatsActual) {
             status = 'open';
-        } else if (watchingWaitlist) {
-            const iWaitlistActual = parseInt(initialWaitlistActual, 10);
-            const iWaitlistCapacity = parseInt(initialWaitlistCapacity, 10);
-
-            if (availability.waitlist.actual < iWaitlistActual || availability.waitlist.capacity > iWaitlistCapacity) {
-                status = 'waitlist_open';
-            }
+        } else if (!beStrict && watchingWaitlist && (availability.waitlist.actual < iWaitlistActual)) {
+            status = 'waitlist_open';
         }
 
         return {
