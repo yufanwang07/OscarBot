@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
         formContainer.classList.add('hidden');
         welcomeMessage.classList.remove('hidden');
     }
-    
+
     function updateFindSectionsButtonState() {
         findSectionsBtn.disabled = !(subjectInput.value.trim() && courseInput.value.trim());
     }
@@ -50,6 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
         slot.dataset.interval = interval;
         slot.dataset.watchWaitlist = watchWaitlist;
         slot.dataset.strictMode = strictMode;
+        slot.dataset.previousSeatsActual = -1; // Initialize to an impossible value
+        slot.dataset.previousWaitlistActual = -1; // Initialize to an impossible value
 
         slot.innerHTML = `
             <div class="flex justify-between items-start">
@@ -74,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             activeSlot = slot;
             activeSlot.classList.add('active');
-            
+
             activeSlot.classList.remove('bg-green-100', 'border-green-500');
             activeSlot.dataset.new = "false";
 
@@ -95,10 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     newSlotButton.addEventListener('click', () => {
-        if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-            Notification.requestPermission();
-        }
-
         if (activeSlot) {
             activeSlot.classList.remove('active');
         }
@@ -118,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     subjectInput.addEventListener('input', updateFindSectionsButtonState);
     courseInput.addEventListener('input', updateFindSectionsButtonState);
-    
+
     intervalInput.addEventListener('input', () => {
         intervalValue.textContent = `${intervalInput.value}s`;
     });
@@ -138,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sections.error) {
                 throw new Error(sections.error);
             }
-            
+
             sectionsSelect.innerHTML = '';
             if (sections.length > 0) {
                 sections.forEach(section => {
@@ -161,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateFindSectionsButtonState();
         }
     });
-    
+
     sectionsSelect.addEventListener('mousedown', function(e) {
         e.preventDefault();
         const option = e.target;
@@ -171,7 +169,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    createBtn.addEventListener('click', () => {
+    createBtn.addEventListener('click', async () => {
+        if (Notification.permission === 'denied') {
+            alert('Notifications are blocked. Please enable them in your browser settings to receive alerts.');
+        } else if (Notification.permission === 'default') {
+            const permission = await Notification.requestPermission();
+            if (permission === 'denied') {
+                alert('You have blocked notifications. Please enable them in your browser settings to receive alerts.');
+            }
+        }
+
         const subject = subjectInput.value.trim().toUpperCase();
         const course = courseInput.value.trim();
         const selectedOptions = Array.from(sectionsSelect.selectedOptions);
@@ -188,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Please enter a valid interval between 5 and 600 seconds.');
             return;
         }
-        
+
         selectedOptions.forEach(option => {
             const crn = option.value;
             const existingSlot = findSlotByCrn(crn);
@@ -202,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 startMonitoring(existingSlot);
             }
         });
-        
+
         showWelcomeMessage();
     });
 
@@ -218,6 +225,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function startMonitoring(slot) {
         const crn = slot.dataset.crn;
+        const subject = slot.dataset.subject;
+        const course = slot.dataset.course;
         const interval = parseInt(slot.dataset.interval, 10) * 1000;
         const slotId = slot.dataset.slotId;
 
@@ -244,14 +253,28 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(`/.netlify/functions/check-crn?${queryParams}`);
                 const data = await response.json();
-                
+
                 if (!response.ok) {
                     throw new Error(data.error || `Request failed with status ${response.status}`);
                 }
 
                 statusEl.classList.remove('text-red-500');
-                seatInfoEl.textContent = `Seats: ${data.availability.seats.actual}/${data.availability.seats.capacity}`;
-                waitlistInfoEl.textContent = `Waitlist: ${data.availability.waitlist.actual}/${data.availability.waitlist.capacity}`;
+
+                const currentSeatsActual = data.availability.seats.actual;
+                const currentWaitlistActual = data.availability.waitlist.actual;
+
+                let seatsOpened = 0;
+                if (slot.dataset.previousSeatsActual !== '-1') { // Only calculate if not first check
+                    seatsOpened = parseInt(slot.dataset.previousSeatsActual) - currentSeatsActual;
+                }
+
+                let waitlistSpotsOpened = 0;
+                if (slot.dataset.previousWaitlistActual !== '-1') { // Only calculate if not first check
+                    waitlistSpotsOpened = parseInt(slot.dataset.previousWaitlistActual) - currentWaitlistActual;
+                }
+
+                seatInfoEl.textContent = `Seats: ${currentSeatsActual}/${data.availability.seats.capacity}`;
+                waitlistInfoEl.textContent = `Waitlist: ${currentWaitlistActual}/${data.availability.waitlist.capacity}`;
                 seatInfoEl.classList.remove('hidden');
                 waitlistInfoEl.classList.remove('hidden');
                 registerBtn.classList.add('hidden');
@@ -259,11 +282,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.status === 'open') {
                     statusEl.textContent = 'Status: Spot Opened!';
                     statusEl.classList.add('text-green-500');
-                    notificationSound.play();
-                    new Notification('Class Spot Open!', {
-                        body: `A spot has opened up for CRN: ${crn}`,
-                    });
-                    
+                    if (Notification.permission === 'granted') {
+                        notificationSound.play();
+                        new Notification(`${subject}${course}:${crn} Seat Open`, {
+                            body: `${seatsOpened > 0 ? `Found ${seatsOpened} open seat(s) for ${subject} ${course}.` : `Found an open seat for ${subject} ${course}.`}`,
+                        });
+                    }
+
                     slot.classList.add('bg-green-100', 'border-green-500');
                     slot.dataset.new = "true";
                     registerBtn.classList.remove('hidden');
@@ -274,10 +299,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (data.status === 'waitlist_open') {
                     statusEl.textContent = 'Status: Waitlist Spot Opened!';
                     statusEl.classList.add('text-green-500');
-                    notificationSound.play();
-                    new Notification('Waitlist Spot Open!', {
-                        body: `A waitlist spot has opened for CRN: ${crn}`,
-                    });
+                    if (Notification.permission === 'granted') {
+                        notificationSound.play();
+                        new Notification(`${subject} ${course} Waitlist Spot Open!`, {
+                            body: `CRN: ${crn}. ${waitlistSpotsOpened > 0 ? `${waitlistSpotsOpened} spot(s) just opened.` : 'A spot is available.'}`,
+                        });
+                    }
 
                     slot.classList.add('bg-green-100', 'border-green-500');
                     slot.dataset.new = "true";
@@ -290,13 +317,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (data.status === 'closed') {
                     statusEl.textContent = 'Status: Monitoring...';
                 }
+                // Update previous actual counts for the next check
+                slot.dataset.previousSeatsActual = currentSeatsActual;
+                slot.dataset.previousWaitlistActual = currentWaitlistActual;
             } catch (error) {
                 statusEl.textContent = 'Status: Connection issue. Retrying...';
                 statusEl.classList.add('text-red-500');
                 console.error('Error checking CRN:', error.message);
             }
         };
-        
+
         statusEl.textContent = 'Status: Initializing...';
         statusEl.classList.remove('text-green-500', 'text-red-500');
         seatInfoEl.classList.remove('hidden');
@@ -312,7 +342,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 slot.dataset.initialSeatsCapacity = data.availability.seats.capacity;
                 slot.dataset.initialWaitlistActual = data.availability.waitlist.actual;
                 slot.dataset.initialWaitlistCapacity = data.availability.waitlist.capacity;
-                
+
+                // Initialize previous actuals for spot opened calculation
+                slot.dataset.previousSeatsActual = data.availability.seats.actual;
+                slot.dataset.previousWaitlistActual = data.availability.waitlist.actual;
+
                 seatInfoEl.textContent = `Seats: ${data.availability.seats.actual}/${data.availability.seats.capacity}`;
                 waitlistInfoEl.textContent = `Waitlist: ${data.availability.waitlist.actual}/${data.availability.waitlist.capacity}`;
                 statusEl.textContent = 'Status: Monitoring...';
@@ -325,8 +359,10 @@ document.addEventListener('DOMContentLoaded', () => {
             statusEl.textContent = 'Status: Error on Init. Retrying...';
             statusEl.classList.add('text-red-500');
             console.error('Error initializing CRN check:', error);
-            
+
+            // Even if init fails, start monitoring to retry
             monitoringIntervals[slotId] = setInterval(performCheck, interval);
         }
     }
 });
+
