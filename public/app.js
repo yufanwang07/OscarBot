@@ -13,8 +13,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const sectionsSelect = document.getElementById('sections');
     const intervalInput = document.getElementById('interval');
     const intervalValue = document.getElementById('interval-value');
-    const watchWaitlistInput = document.getElementById('watch-waitlist');
+    const waitlistModeInputs = document.querySelectorAll('input[name="waitlist-mode"]');
     const strictModeInput = document.getElementById('strict-mode');
+
+    const WAITLIST_MODE_LABELS = {
+        exclude: 'Exclude Waitlist',
+        include: 'Include Waitlist',
+        only: 'Waitlist Only'
+    };
+
+    function getWaitlistMode() {
+        const checked = document.querySelector('input[name="waitlist-mode"]:checked');
+        return checked ? checked.value : 'exclude';
+    }
+
+    function setWaitlistMode(mode) {
+        const target = WAITLIST_MODE_LABELS[mode] ? mode : 'exclude';
+        waitlistModeInputs.forEach(input => {
+            input.checked = input.value === target;
+        });
+    }
 
     let activeSlot = null;
     let slotCounter = 0;
@@ -39,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
         createBtn.disabled = sectionsSelect.selectedOptions.length === 0;
     }
 
-    function addSlot(crn, subject, course, interval, watchWaitlist, strictMode) {
+    function addSlot(crn, subject, course, interval, waitlistMode, strictMode) {
         const slotId = `slot-${slotCounter++}`;
         const slot = document.createElement('div');
         slot.classList.add('slot', 'p-4', 'rounded-md', 'cursor-pointer', 'border');
@@ -48,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
         slot.dataset.subject = subject;
         slot.dataset.course = course;
         slot.dataset.interval = interval;
-        slot.dataset.watchWaitlist = watchWaitlist;
+        slot.dataset.waitlistMode = waitlistMode;
         slot.dataset.strictMode = strictMode;
         slot.dataset.previousSeatsActual = -1; // Initialize to an impossible value
         slot.dataset.previousWaitlistActual = -1; // Initialize to an impossible value
@@ -65,8 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <a href="https://registration.banner.gatech.edu/StudentRegistrationSsb/ssb/classRegistration/classRegistration" target="_blank" class="register-btn hidden bg-blue-500 hover:bg-blue-700 text-white text-xs py-1 px-2 rounded mt-1">Register</a>
                 </div>
             </div>
-            <div class="text-sm text-gray-600">Waitlist: ${watchWaitlist ? 'Watching' : 'Not Watching'}</div>
-            <div class="text-sm text-gray-600">Strict Mode: ${strictMode ? 'On' : 'Off'}</div>
+            <div class="text-sm text-gray-600 waitlist-mode-info">Waitlist mode: ${WAITLIST_MODE_LABELS[waitlistMode] || WAITLIST_MODE_LABELS.exclude}</div>
+            <div class="text-sm text-gray-600 strict-mode-info">Strict Mode: ${strictMode ? 'On' : 'Off'}</div>
             <div class="text-sm text-gray-500 status">Status: Idle</div>
         `;
 
@@ -85,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
             courseInput.value = activeSlot.dataset.course;
             intervalInput.value = activeSlot.dataset.interval;
             intervalValue.textContent = `${activeSlot.dataset.interval}s`;
-            watchWaitlistInput.checked = activeSlot.dataset.watchWaitlist === 'true';
+            setWaitlistMode(activeSlot.dataset.waitlistMode);
             strictModeInput.checked = activeSlot.dataset.strictMode === 'true';
             sectionsContainer.classList.add('hidden');
             updateFindSectionsButtonState();
@@ -105,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
         courseInput.value = '';
         intervalInput.value = '30';
         intervalValue.textContent = '30s';
-        watchWaitlistInput.checked = false;
+        setWaitlistMode('exclude');
         strictModeInput.checked = true;
         sectionsContainer.classList.add('hidden');
         sectionsSelect.innerHTML = '';
@@ -183,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const course = courseInput.value.trim();
         const selectedOptions = Array.from(sectionsSelect.selectedOptions);
         const interval = parseInt(intervalInput.value, 10);
-        const watchWaitlist = watchWaitlistInput.checked;
+        const waitlistMode = getWaitlistMode();
         const strictMode = strictModeInput.checked;
 
         if (selectedOptions.length === 0) {
@@ -200,12 +218,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const crn = option.value;
             const existingSlot = findSlotByCrn(crn);
             if (!existingSlot) {
-                const newSlot = addSlot(crn, subject, course, interval, watchWaitlist, strictMode);
+                const newSlot = addSlot(crn, subject, course, interval, waitlistMode, strictMode);
                 startMonitoring(newSlot);
             } else {
                 existingSlot.dataset.interval = interval;
-                existingSlot.dataset.watchWaitlist = watchWaitlist;
+                existingSlot.dataset.waitlistMode = waitlistMode;
                 existingSlot.dataset.strictMode = strictMode;
+                existingSlot.querySelector('.waitlist-mode-info').textContent = `Waitlist mode: ${WAITLIST_MODE_LABELS[waitlistMode]}`;
+                existingSlot.querySelector('.strict-mode-info').textContent = `Strict Mode: ${strictMode ? 'On' : 'Off'}`;
                 startMonitoring(existingSlot);
             }
         });
@@ -246,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 initialSeatsCapacity: slot.dataset.initialSeatsCapacity,
                 initialWaitlistActual: slot.dataset.initialWaitlistActual,
                 initialWaitlistCapacity: slot.dataset.initialWaitlistCapacity,
-                watchWaitlist: slot.dataset.watchWaitlist,
+                waitlistMode: slot.dataset.waitlistMode,
                 strictMode: slot.dataset.strictMode
             });
 

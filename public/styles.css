@@ -4,6 +4,46 @@
     border-left: 4px solid #4F46E5; /* indigo-600 */
 }
 
+/* Waitlist mode segmented switch */
+.segmented {
+    display: inline-flex;
+    padding: 2px;
+    background-color: #f3f4f6; /* gray-100 */
+    border: 1px solid #d1d5db; /* gray-300 */
+    border-radius: 0.375rem;
+}
+
+.segmented-option input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.segmented-option span {
+    display: block;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    color: #374151; /* gray-700 */
+    border-radius: 0.25rem;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.segmented-option span:hover {
+    background-color: #e5e7eb; /* gray-200 */
+}
+
+.segmented-option input:checked + span {
+    background-color: #4F46E5; /* indigo-600 */
+    color: #ffffff;
+}
+
+.segmented-option input:focus-visible + span {
+    box-shadow: 0 0 0 2px #a5b4fc; /* indigo-300 */
+}
+
 button:disabled {
     background-color: #9ca3af !important; /* Tailwind gray-400 */
     color: #ffffff !important; /* White text */

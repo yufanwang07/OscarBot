@@ -111,7 +111,7 @@ exports.handler = async (event, context) => {
         initialSeatsCapacity,
         initialWaitlistActual,
         initialWaitlistCapacity,
-        watchWaitlist,
+        waitlistMode,
         strictMode
     } = event.queryStringParameters;
     const term = getCurrentTerm();
@@ -150,23 +150,34 @@ exports.handler = async (event, context) => {
 
         const iSeatsActual = parseInt(initialSeatsActual, 10);
         const iWaitlistActual = parseInt(initialWaitlistActual, 10);
-        const watchingWaitlist = watchWaitlist === 'true';
+        // 'exclude' = seats only, 'include' = seats + waitlist, 'only' = waitlist only
+        const mode = ['exclude', 'include', 'only'].includes(waitlistMode) ? waitlistMode : 'exclude';
         const beStrict = strictMode === 'true';
 
         let status = 'closed';
 
-        if (beStrict) {
-            if (availability.seats.actual < iSeatsActual) {
-                status = 'open';
-            }
-        } else {
-            if (availability.seats.remaining > 0) {
-                status = 'open';
+        if (mode !== 'only') {
+            if (beStrict) {
+                if (availability.seats.actual < iSeatsActual) {
+                    status = 'open';
+                }
+            } else {
+                if (availability.seats.remaining > 0) {
+                    status = 'open';
+                }
             }
         }
 
-        if (status !== 'open' && !beStrict && watchingWaitlist && (availability.waitlist.actual < iWaitlistActual)) {
-            status = 'waitlist_open';
+        if (status !== 'open' && mode !== 'exclude') {
+            if (beStrict) {
+                if (availability.waitlist.actual < iWaitlistActual) {
+                    status = 'waitlist_open';
+                }
+            } else {
+                if (availability.waitlist.remaining > 0) {
+                    status = 'waitlist_open';
+                }
+            }
         }
 
 
